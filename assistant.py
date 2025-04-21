@@ -1,60 +1,76 @@
 import speech_recognition as sr
-import os
-import time
-from datetime import datetime
+from gtts import gTTS
+import winsound
+from pydub import AudioSegment
+import pyautogui
+import webbrowser
 
-def speak(text):
-    os.system(f'espeak "{text}"')
+def listen_for_command():
+    recognizer = sr.Recognizer()
 
-def listen():
-    r = sr.Recognizer()
-    with sr.Microphone(sample_rate=44100, chunk_size=1024) as source:
-        print("Listening...")
-        r.adjust_for_ambient_noise(source, duration=1)
-        try:
-            audio = r.listen(source, timeout=5, phrase_time_limit=8)
-            return r.recognize_google(audio).lower()
-        except sr.WaitTimeoutError:
-            return ""
-        except Exception as e:
-            print(f"Audio error: {str(e)}")
-            return ""
+    with sr.Microphone() as source:
+        print("Listening for commands...")
+        recognizer.adjust_for_ambient_noise(source)
+        audio = recognizer.listen(source)
 
-def set_reminder(reminder_time, task):
     try:
-        target = datetime.strptime(reminder_time, "%H:%M")
-        now = datetime.now().replace(second=0, microsecond=0)
-        
-        if target < now:
-            speak("Time already passed")
-            return
-        
-        delay = (target - now).total_seconds()
-        time.sleep(delay)
-        speak(f"Reminder: {task}!")
-        os.system("paplay /usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga")
-    except Exception as e:
-        print(f"Reminder error: {str(e)}")
-        speak("Reminder failed")
+        command = recognizer.recognize_google(audio)
+        print("You said:", command)
+        return command.lower()
+    except sr.UnknownValueError:
+        print("Could not understand audio. Please try again.")
+        return None
+    except sr.RequestError:
+        print("Unable to access the Google Speech Recognition API.")
+        return None
+
+def respond(response_text):
+    print(response_text)
+    tts = gTTS(text=response_text, lang='en')
+    tts.save("response.mp3")
+    sound = AudioSegment.from_mp3("response.mp3")
+    sound.export("response.wav", format="wav")
+    winsound.PlaySound("response.wav", winsound.SND_FILENAME)
+    
+
+tasks = []
+listeningToTask = False
 
 def main():
-    speak("Ready for commands")
+    global tasks
+    global listeningToTask
+    # respond("Hello, Agrim. I hope you're having a nice day today.")
     while True:
-        command = listen()
-        print("Command:", command)
+        command = listen_for_command()
+
+        triggerKeyword = "hey assistant"
+
         
-        if "remind me to" in command:
-            try:
-                parts = command.split("remind me to")[1].split(" at ")
-                task = parts[0].strip()
-                time_str = parts[1].strip().replace(".", "")
-                set_reminder(time_str, task)
-                speak(f"Set reminder for {task} at {time_str}")
-            except:
-                speak("Failed to set reminder")
-        elif "exit" in command:
-            speak("Goodbye")
-            break
+        if command and triggerKeyword in command:
+            if listeningToTask:
+                tasks.append(command)
+                listeningToTask = False
+                respond("Adding " + command + " to your task list. You have " + str(len(tasks)) + " currently in your list.")
+            elif "add a task" in command:
+                listeningToTask = True
+                respond("Sure, what is the task?")
+            elif "list tasks" in command:
+                respond("Sure. Your tasks are:")
+                for task in tasks:
+                    respond(task)
+            elif "take a screenshot" in command:
+                pyautogui.screenshot("screenshot.png")
+                respond("I took a screenshot for you.")
+            elif "open chrome" in command:
+                respond("Opening Chrome.")
+                webbrowser.open("http://www.google.com")
+            elif "exit" in command:
+                respond("Goodbye!")
+                break
+            else:
+                respond("Sorry, I'm not sure how to handle that command.")
 
 if __name__ == "__main__":
+    # print(listen_for_command())
+    #respond("This has been building a virtual assistant with Python")
     main()
